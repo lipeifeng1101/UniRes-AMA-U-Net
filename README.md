@@ -41,7 +41,29 @@ Extensive experiments on three widely recognized public datasets demonstrate tha
 
 ## **📂 Data Preparation**
 
-Please download the publicly available datasets and organize them into the data/ directory as follows:
+The UniRes-AMA U-Net framework is evaluated on three widely used, publicly available retinal vessel segmentation datasets. These datasets offer diverse imaging conditions, resolutions, and anatomical complexities.
+
+### **Datasets Overview & Acquisition**
+
+1. **DRIVE (Digital Retinal Images for Vessel Extraction)**  
+   * **Description:** Contains 40 color fundus images (20 for training, 20 for testing) acquired from a diabetic retinopathy screening program. Features well-illuminated images with relatively regular vessel structures.  
+   * **Resolution:** 584 × 565 pixels (resized to 512 × 512 during preprocessing).  
+   * **Format:** .tif  
+   * **Download:** [Official Grand Challenge Page](https://drive.grand-challenge.org/) | [Kaggle Dataset](https://www.kaggle.com/datasets/zionfuo/drive2004)  
+2. **STARE (STructured Analysis of the REtina)**  
+   * **Description:** Comprises 20 high-resolution color fundus images. A significant portion of these images exhibits advanced pathologies, creating greater variability. We utilize a 15/5 train/test split.  
+   * **Resolution:** 700 × 605 pixels (resized to 512 × 512 during preprocessing).  
+   * **Format:** .ppm  
+   * **Download:** [Official STARE Project Page](http://cecas.clemson.edu/~ahoover/stare/) | [Kaggle Dataset](https://www.kaggle.com/datasets/zhulin10/stare-image-dataset)  
+3. **CHASEDB1 (Child Heart And Health Study in England)**  
+   * **Description:** Contains 28 color fundus images captured from the eyes of multi-ethnic school children, characterized by dense vasculature and complex branching. We employ a 23/5 train/test split.  
+   * **Resolution:** 990 × 960 pixels (resized to 512 × 512 during preprocessing).  
+   * **Format:** .jpg  
+   * **Download:** [Official CHASEDB1 Page](https://blogs.kingston.ac.uk/cvml/chasedb1/) | [Kaggle Dataset](https://www.kaggle.com/datasets/zhulin10/chasedb1)
+
+### **Directory Structure**
+
+Please download the datasets using the links above and organize them into the data/ directory as follows:
 
 data/  
 ├── DRIVE/  
