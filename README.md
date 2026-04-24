@@ -2,16 +2,18 @@
 **Official Implementation of**  
 _"Unified Coordination Framework for Topology-Preserving Retinal Vessel Segmentation"_  
 *(Under Review, The visual computer 2026)*
+
 This repository contains the official PyTorch implementation of the paper:
 
 🚀 Introduction
 
 Retinal vessel segmentation serves as a foundational task in ophthalmic image analysis and computer-aided diagnosis. However, existing encoder-decoder models suffer from cross-level feature misalignment, scale inconsistency, and local-global isolation, leading to fragmented microvessel predictions and poor topological integrity.
+
 UniRes-AMA U-Net addresses these challenges through a unified coordination framework that integrates four core components:
-Unified Residual Block (Uni-ResBlock): Synergistically integrates Simplified Spatial Attention (SSA) and Balanced Vessel Attention (BVA) for local and anisotropic feature enhancement.
-Adaptive Multi-Directional Attention (AMA): A cross-scale coordination module that enforces feature consistency along three orthogonal planes (C-W, C-H, H-W) during the decoding stage.
-Sequence-based MLP Global Context Module (Seq-MLP): Captures long-range structural dependencies and vascular topology efficiently at the deepest encoder stage.
-Adaptive Multi-Branch Fusion (AMBF): Adaptively weights contributions from main vessel, microvessel, and connectivity-aware branches to ensure topological integrity in the final prediction.
+1.Unified Residual Block (Uni-ResBlock): Synergistically integrates Simplified Spatial Attention (SSA) and Balanced Vessel Attention (BVA) for local and anisotropic feature enhancement.
+2.Adaptive Multi-Directional Attention (AMA): A cross-scale coordination module that enforces feature consistency along three orthogonal planes (C-W, C-H, H-W) during the decoding stage.
+3.Sequence-based MLP Global Context Module (Seq-MLP): Captures long-range structural dependencies and vascular topology efficiently at the deepest encoder stage.
+4.Adaptive Multi-Branch Fusion (AMBF): Adaptively weights contributions from main vessel, microvessel, and connectivity-aware branches to ensure topological integrity in the final prediction.
 
 📊 Performance Metrics
 
