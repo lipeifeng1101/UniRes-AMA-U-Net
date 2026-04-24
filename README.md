@@ -24,8 +24,11 @@ UniRes-AMA U-Net addresses these challenges through a unified coordination frame
 Extensive experiments on three public datasets demonstrate that our method achieves competitive performance, particularly in topology-preserving metrics (clDice) and segmentation accuracy.
 
 | Dataset | AUC | F1-score | clDice | ACC | SE | SP |
+
 | DRIVE | 0.9871 | 0.8369 | 0.8421 | 0.9693 | 0.8465 | 0.9849 |
+
 | STARE | 0.9872 | 0.8494 | 0.8530 | 0.9773 | 0.8516 | 0.9892 |
+
 | CHASEDB1 | 0.9891 | 0.8342 | 0.8395 | 0.9761 | 0.8662 | 0.9872 |
 
 🛠️ Requirements
