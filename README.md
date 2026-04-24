@@ -1,7 +1,7 @@
 # **UniRes-AMA U-Net**
-
 **Unified Coordination Framework for Topology-Preserving Retinal Vessel Segmentation**
-
+**Official Implementation of**  
+*(Under Review, The visual computer 2026)*
 This repository contains the official PyTorch implementation and datasets for the paper:
 
 ![][image1].
