@@ -82,7 +82,7 @@ If you find this code, framework, or research methodology helpful in your own ac
 @article{li2026uniresama,  
   title={Unified Coordination Framework for Topology-Preserving Retinal Vessel Segmentation},  
   author={Li, Peifeng and Meng, Xianjing and Li, Hengwu and Dou, Changhao},  
-  journal={TBD},  
+  journal={The visual computer},  
   year={2026}  
 }  
 
