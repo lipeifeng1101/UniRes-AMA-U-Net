@@ -24,11 +24,11 @@ Retinal vessel segmentation serves as a foundational task in ophthalmic image an
 
 Extensive experiments on three widely recognized public datasets demonstrate that our method achieves highly competitive performance. In particular, UniRes-AMA U-Net excels in topology-preserving metrics, such as Centerline Dice (clDice), which specifically measures the structural continuity and skeleton integrity of the predicted vascular networks. The model demonstrates robust generalization across images with varying illumination, resolution, and pathological conditions.
 
-| Dataset | AUC | F1-score | ACC | SE | SP |
-| :---- | :---- | :---- | :---- | :---- | :---- |
-| **DRIVE** | 0.9871 | 0.8369 | 0.9693 | 0.8465 | 0.9849 |
-| **STARE** | 0.9872 | 0.8494 | 0.9773 | 0.8516 | 0.9892 |
-| **CHASEDB1** | 0.9891 | 0.8342 | 0.9761 | 0.8662 | 0.9872 |
+| Dataset | AUC | F1-score | clDice | ACC | SE | SP |
+| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
+| **DRIVE** | 0.9871 | 0.8369 | 0.8421 | 0.9693 | 0.8465 | 0.9849 |
+| **STARE** | 0.9872 | 0.8494 | 0.8530 | 0.9773 | 0.8516 | 0.9892 |
+| **CHASEDB1** | 0.9891 | 0.8342 | 0.8395 | 0.9761 | 0.8662 | 0.9872 |
 
 ## **🛠️ Requirements**
 
