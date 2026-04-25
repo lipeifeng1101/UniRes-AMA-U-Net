@@ -82,7 +82,7 @@ data/
 
 Begin by cloning the repository to your local machine and navigating into the project directory:
 
-git clone \[https://github.com/lipeifeng1101/UniRes-AMA-U-Net.git\](https://github.com/lipeifeng1101/UniRes-AMA-U-Net.git)  
+git clone \[https://github.com/lipeifeng1101/UniRes-AMA-U-Net.git\] 
 cd UniRes-AMA-U-Net
 
 ### **2\. Training**
