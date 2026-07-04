@@ -3,9 +3,9 @@
 
 **Official Implementation of**  
 
-*(Under Review, The visual computer 2026)*
+*(Under Review, Pattern Analysis and Applications 2026)*
 
-**📢 Note:** This codebase and the corresponding dataset evaluation protocols are directly related to the manuscript currently submitted to ***The Visual Computer***.
+**📢 Note:** This codebase and the corresponding dataset evaluation protocols are directly related to the manuscript currently submitted to ***Pattern Analysis and Applications***.
 
 This repository contains the official PyTorch implementation and datasets for the paper:
 
