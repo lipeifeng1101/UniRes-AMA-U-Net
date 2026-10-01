@@ -1,120 +1,388 @@
-# **UniRes-AMA U-Net**
-**Unified Coordination Framework for Topology-Preserving Retinal Vessel Segmentation**
+# UniRes-AMA U-Net
 
-**Official Implementation of**  
+## A Unified Coordination Framework for Retinal Vessel Segmentation
 
-*(Under Review, Pattern Analysis and Applications 2026)*
+**Official PyTorch implementation of the manuscript**
 
-**📢 Note:** This codebase and the corresponding dataset evaluation protocols are directly related to the manuscript currently submitted to ***Pattern Analysis and Applications***.
+> **A Unified Coordination Framework for Retinal Vessel Segmentation**
 
-This repository contains the official PyTorch implementation and datasets for the paper:
+**Status:** Under review at *Pattern Analysis and Applications* (2026)
 
-![][image1].
+UniRes-AMA U-Net is a retinal vessel segmentation framework designed to coordinate vessel representations across different stages of an encoder-decoder network. The method focuses on improving the delineation of small vessels and vascular structural continuity through complementary feature refinement, prediction fusion, and training objectives.
 
-## **🚀 Introduction**
+> **Important:** The proposed framework does not impose an explicit topological constraint or guarantee formal topology preservation. Structural continuity is evaluated empirically using standard segmentation metrics together with centerline-based clDice.
 
-Retinal vessel segmentation serves as a foundational task in ophthalmic image analysis and computer-aided diagnosis, playing a critical role in the early detection and monitoring of systemic diseases such as diabetic retinopathy and hypertension. Despite its immense clinical importance, extracting precise vascular networks from complex fundus images remains highly challenging. Existing encoder-decoder models frequently suffer from cross-level feature misalignment, scale inconsistency, and local-global isolation. These architectural limitations inevitably lead to fragmented microvessel predictions, false positives in noisy regions, and poor overall topological integrity, which can severely impact downstream clinical assessments and automated diagnostics.
+---
 
-**UniRes-AMA U-Net** systematically addresses these challenges through a unified coordination framework that harmonizes hierarchical feature learning. The architecture integrates four core components to ensure both local detail enhancement and global structural coherence:
+## 🚀 Overview
 
-* **Unified Residual Block (Uni-ResBlock):** Synergistically integrates Simplified Spatial Attention (SSA) and Balanced Vessel Attention (BVA) for local and anisotropic feature enhancement. By combining low-cost spatial localization with multi-directional anisotropic kernels, this block effectively improves the network's sensitivity to low-contrast, blurred microvessels without heavily increasing computational overhead.  
-* **Adaptive Multi-Directional Attention (AMA):** A cross-scale coordination module that enforces feature consistency along three orthogonal planes (C-W, C-H, H-W) during the decoding stage. Unlike traditional attention mechanisms that operate purely on the spatial domain, AMA ensures that both spatial and channel-wise information are consistently emphasized, preserving fine-scale vessel continuity during upsampling.  
-* **Sequence-based MLP Global Context Module (Seq-MLP):** Captures long-range structural dependencies and vascular topology efficiently at the deepest encoder stage. By modeling long-range interactions through linear transformations on flattened spatial sequences, Seq-MLP achieves effective global topology awareness with much higher computational efficiency than standard graph-based or global self-attention alternatives.  
-* **Adaptive Multi-Branch Fusion (AMBF):** Adaptively weights contributions from the main vessel, microvascular detail, and connectivity-aware branches to ensure topological integrity in the final prediction. Instead of relying on heuristic weight assignments, AMBF dynamically adjusts the importance of microvessel reconstruction and connectivity preservation through backpropagation, yielding structurally complete and highly accurate segmentation maps.
+Retinal vessel segmentation is an important step in quantitative fundus image analysis. Accurate segmentation remains challenging because small and low-contrast vessels can weaken during downsampling, while features from different encoder and decoder stages may contain different spatial and semantic information.
 
-## **📊 Performance Metrics**
+**UniRes-AMA U-Net** follows a symmetric encoder-decoder architecture and coordinates vessel representations at several stages of the network.
 
-Extensive experiments on three widely recognized public datasets demonstrate that our method achieves highly competitive performance. In particular, UniRes-AMA U-Net excels in topology-preserving metrics, such as Centerline Dice (clDice), which specifically measures the structural continuity and skeleton integrity of the predicted vascular networks. The model demonstrates robust generalization across images with varying illumination, resolution, and pathological conditions.
+The framework contains the following main components:
+
+### 1. Window Attention BotBlock
+
+A lightweight window-based attention block is applied once to the shallow high-resolution representation.
+
+Instead of performing global self-attention over the complete image, the feature map is divided into local non-overlapping windows. This provides controlled spatial interaction between neighboring vessel features while retaining the high spatial resolution available at the beginning of the network.
+
+### 2. Unified Residual Block (Uni-ResBlock)
+
+Uni-ResBlock is the main feature extraction unit and integrates two complementary mechanisms:
+
+- **Simplified Spatial Attention (SSA)** emphasizes spatially relevant vessel regions using channel-wise average and maximum pooling.
+- **Balanced Vessel Attention (BVA)** uses horizontal, vertical, diagonal, and pointwise convolutions to refine directional responses of elongated vascular structures.
+
+SSA and BVA operate on different intermediate features within the same sequential residual pathway and provide complementary spatial and directional refinement.
+
+### 3. Adaptive Multi-Directional Attention (AMA)
+
+AMA is applied to intermediate decoder features before multiscale feature fusion.
+
+It recalibrates feature responses across three complementary planes:
+
+- \(C-W\)
+- \(C-H\)
+- \(H-W\)
+
+AMA uses lightweight gating operations rather than query-key self-attention. Its role is to coordinate spatial and channel information during decoding.
+
+### 4. Seq-MLP
+
+Seq-MLP is placed at the bottleneck of the encoder-decoder network.
+
+The bottleneck feature is reshaped into a sequence representation, after which the same affine transformation is applied independently to the channel vector at each spatial position.
+
+Therefore, **Seq-MLP performs pointwise channel refinement rather than long-range spatial token interaction**. It changes the channel composition while leaving the spatial index unchanged.
+
+### 5. Adaptive Multi-Branch Fusion (AMBF)
+
+AMBF combines three parallel prediction heads:
+
+- **Main branch**
+- **Small Vessel branch**
+- **Continuity branch**
+
+The three predictions are combined using globally shared learnable coefficients. The raw fusion parameters are optimized jointly with the network and normalized using Softmax during the forward pass.
+
+The coefficients are shared across input samples and are **not dynamically generated for each image**.
+
+The names of the auxiliary branches describe their intended refinement roles. They should not be interpreted as independently supervised functional decompositions.
+
+---
+
+## 🎯 Training Objective
+
+The final fused prediction is optimized using
+
+\[
+\mathcal{L}_{\mathrm{total}}
+=
+\mathcal{L}_{\mathrm{main}}
++
+\lambda_1\mathcal{L}_{\mathrm{small}}
++
+\lambda_2\mathcal{L}_{\mathrm{cont}}.
+\]
+
+The objective contains:
+
+- **Main segmentation loss:** binary cross-entropy + soft Dice loss.
+- **Small-vessel weighting term:** gives greater emphasis to vessels with small calibre.
+- **Finite-difference continuity term:** penalizes mismatched local transitions between the predicted vessel map and the reference mask.
+
+The main experiments use
+
+```text
+λ1 = 0.5
+λ2 = 0.5
+```
+
+The maximum microvessel diameter is set to **4 pixels** on the \(512 \times 512\) training grid.
+
+These objectives encourage fine-vessel reconstruction and local structural consistency but do not impose a global topological invariant.
+
+---
+
+## 📊 Quantitative Results
+
+UniRes-AMA U-Net was evaluated on three public retinal vessel segmentation datasets: **DRIVE**, **STARE**, and **CHASEDB1**.
 
 | Dataset | AUC | F1-score | clDice | ACC | SE | SP |
-| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **DRIVE** | 0.9871 | 0.8369 | 0.8421 | 0.9693 | 0.8465 | 0.9849 |
-| **STARE** | 0.9872 | 0.8494 | 0.8530 | 0.9773 | 0.8516 | 0.9892 |
-| **CHASEDB1** | 0.9891 | 0.8342 | 0.8395 | 0.9761 | 0.8662 | 0.9872 |
+|---|---:|---:|---:|---:|---:|---:|
+| **DRIVE** | **0.9871** | **0.8369** | **0.8421** | **0.9693** | **0.8465** | **0.9849** |
+| **STARE** | **0.9872** | **0.8494** | **0.8530** | **0.9773** | **0.8516** | **0.9892** |
+| **CHASEDB1** | **0.9891** | **0.8342** | **0.8395** | **0.9761** | **0.8662** | **0.9872** |
 
-## **🛠️ Requirements**
+The clDice values provide complementary evidence based on agreement between the predicted and reference vessel centerlines.
 
-* Python \>= 3.8  
-* PyTorch \== 1.12  
-* Torchvision  
-* NumPy, SciPy, scikit-learn, OpenCV
+The three-dataset results above are **single-run aggregate point estimates** and are not reported as mean ± standard deviation over repeated training runs.
 
-*(Note: All experiments and benchmarks detailed in the paper were conducted on a single NVIDIA GeForce RTX 2080 Ti GPU. The model is designed to be highly efficient, featuring roughly 46.3M parameters, which strikes an optimal balance between high representational capacity and practical runtime performance for clinical workflows.)*
+---
 
-## **📂 Data Preparation**
+## ⏱️ Computational Efficiency
 
-The UniRes-AMA U-Net framework is evaluated on three widely used, publicly available retinal vessel segmentation datasets. These datasets offer diverse imaging conditions, resolutions, and anatomical complexities.
+All runtime measurements reported in the manuscript were obtained using an input resolution of \(512 \times 512\) on a single **NVIDIA GeForce RTX 2080 Ti** GPU.
 
-### **Datasets Overview & Acquisition**
+| Model | Parameters | Training Time / Epoch | Inference Time / Image | FPS |
+|---|---:|---:|---:|---:|
+| U-Net | 31.0 M | 2.80 s | 0.150 s | 6.7 |
+| Attention U-Net | 35.5 M | 3.10 s | 0.162 s | 6.2 |
+| **UniRes-AMA U-Net** | **46.3 M** | **3.38 s** | **0.174 s** | **5.7** |
 
-1. **DRIVE (Digital Retinal Images for Vessel Extraction)**  
-   * **Description:** Contains 40 color fundus images (20 for training, 20 for testing) acquired from a diabetic retinopathy screening program. Features well-illuminated images with relatively regular vessel structures.  
-   * **Resolution:** 584 × 565 pixels (resized to 512 × 512 during preprocessing).  
-   * **Format:** .tif  
-   * **Download:** https://drive.grand-challenge.org/  
-2. **STARE (STructured Analysis of the REtina)**  
-   * **Description:** Comprises 20 high-resolution color fundus images. A significant portion of these images exhibits advanced pathologies, creating greater variability. We utilize a 15/5 train/test split.  
-   * **Resolution:** 700 × 605 pixels (resized to 512 × 512 during preprocessing).  
-   * **Format:** .ppm  
-   * **Download:** https://cecas.clemson.edu/~ahoover/stare/  
-3. **CHASEDB1 (Child Heart And Health Study in England)**  
-   * **Description:** Contains 28 color fundus images captured from the eyes of multi-ethnic school children, characterized by dense vasculature and complex branching. We employ a 23/5 train/test split.  
-   * **Resolution:** 990 × 960 pixels (resized to 512 × 512 during preprocessing).  
-   * **Format:** .jpg  
-   * **Download:** https://blogs.kingston.ac.uk/retinal/chasedb1/
+Runtime depends on hardware and implementation details.
 
-### **Directory Structure**
+The additional feature refinement and structural modeling increase the computational cost relative to vanilla U-Net. Under the reported implementation, UniRes-AMA U-Net is intended primarily for **offline or batch retinal image analysis rather than real-time diagnostic use**.
 
-Please download the datasets using the links above and organize them into the data/ directory as follows:
+---
 
-data/  
-├── DRIVE/  
-│   ├── training/  
-│   └── test/  
-├── STARE/  
+## 🛠️ Requirements
+
+The experiments were implemented using:
+
+```text
+Python >= 3.8
+PyTorch == 1.12
+Torchvision
+NumPy
+SciPy
+scikit-learn
+OpenCV
+```
+
+The experiments reported in the manuscript were performed on:
+
+```text
+NVIDIA GeForce RTX 2080 Ti
+```
+
+---
+
+## 📂 Data Preparation
+
+The framework was evaluated on DRIVE, STARE, and CHASEDB1.
+
+| Dataset | Training Pool | Test Set | Total | Original Resolution | Network Input | Format |
+|---|---:|---:|---:|---|---|---|
+| DRIVE | 20 | 20 | 40 | 584 × 565 | 512 × 512 | `.tif` |
+| STARE | 15 | 5 | 20 | 700 × 605 | 512 × 512 | `.ppm` |
+| CHASEDB1 | 23 | 5 | 28 | 990 × 960 | 512 × 512 | `.jpg` |
+
+### Dataset Links
+
+**DRIVE**
+
+https://drive.grand-challenge.org/
+
+**STARE**
+
+https://cecas.clemson.edu/~ahoover/stare/
+
+**CHASEDB1**
+
+https://blogs.kingston.ac.uk/retinal/chasedb1/
+
+### Suggested Directory Structure
+
+```text
+data/
+├── DRIVE/
+│   ├── training/
+│   └── test/
+├── STARE/
 └── CHASEDB1/
+```
 
-**Preprocessing Details**: Since raw fundus images often suffer from uneven illumination, background artifacts, and poor contrast, all images undergo a standardized preprocessing pipeline. This includes careful illumination correction and contrast enhancement to improve baseline vessel visibility, followed by normalization. They are subsequently resized to a 512x512 resolution for consistent processing. To ensure the model learns robust features and prevents overfitting on limited medical datasets, comprehensive data augmentation strategies—including random rotations, horizontal flips, and scale perturbations—are applied dynamically during training.
+---
 
-## **⚙️ Quick Start**
+## 🔧 Preprocessing
 
-### **1\. Clone the Repository**
+All images are processed using the same general preprocessing pipeline:
 
-Begin by cloning the repository to your local machine and navigating into the project directory:
+1. Illumination correction.
+2. Contrast enhancement.
+3. Resizing to \(512 \times 512\).
+4. Intensity normalization.
 
-git clone \[https://github.com/lipeifeng1101/UniRes-AMA-U-Net.git\] 
+During training, data augmentation includes:
 
+- random horizontal flipping,
+- random vertical flipping,
+- random rotation,
+- random scaling.
+
+The network is trained using \(512 \times 512\) inputs.
+
+**No \(64 \times 64\) training crops are used in the reported experiments.**
+
+---
+
+## ⚙️ Training Configuration
+
+The main training configuration reported in the manuscript is:
+
+| Setting | Value |
+|---|---|
+| Framework | PyTorch 1.12 |
+| GPU | NVIDIA GeForce RTX 2080 Ti |
+| Optimizer | Adam |
+| Maximum epochs | 100 |
+| Initial learning rate | \(5 \times 10^{-4}\) |
+| Scheduler | Cosine annealing |
+| Weight decay | Not set in the available optimizer configuration |
+| Early stopping | Patience = 50 epochs |
+| Main experiment seed | 2021 |
+| Uni-ResBlock \(\gamma\) initialization | 0.2 |
+| AMBF raw weights | \([1.0, 0.3, 0.2]\) |
+| \(\lambda_1\) | 0.5 |
+| \(\lambda_2\) | 0.5 |
+| Maximum microvessel diameter | 4 pixels |
+
+The AMBF raw coefficients correspond to the Main, Small Vessel, and Continuity branches and are normalized using Softmax during inference and training.
+
+---
+
+## 🔬 Experimental Protocol
+
+### Main Three-Dataset Experiments
+
+The test sets were kept separate from model selection and early stopping.
+
+For the originally reported main experiments, the preserved experimental records indicate that an internal validation subset was sampled from each training pool without overlap with the test set.
+
+The exact internal validation ratios and image identifiers of these original runs are not available in the preserved configuration.
+
+### DRIVE Revision Experiments
+
+The additional DRIVE ablation and loss-weight sensitivity experiments follow a separately documented source-image-level protocol.
+
+For each run:
+
+```text
+Original DRIVE training pool: 20 images
+Training source images:       18
+Validation source images:      2
+Held-out DRIVE test images:   20
+```
+
+The 18 training images generate **540 fixed training sampling entries**, while the two validation images generate **60 fixed validation sampling entries**.
+
+These sampling entries **do not represent 64 × 64 image crops**.
+
+For the five-run ablation study:
+
+```text
+Seeds: 2021, 2022, 2023, 2024, 2025
+```
+
+Within each run, all compared configurations use the same source-image split. The source-image split is regenerated between independent runs.
+
+The loss-weight sensitivity analysis uses seed **2021** and a fixed 18/2 source-image split.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/lipeifeng1101/UniRes-AMA-U-Net.git
 cd UniRes-AMA-U-Net
+```
 
-### **2\. Training**
+### 2. Training
 
-To train the model from scratch using the default hyperparameters (e.g., targeting the DRIVE dataset), run the following command. The script will automatically log training progress and save the best model weights based on validation performance:
+For example, to train the model on DRIVE:
 
-python train.py \--dataset DRIVE \--epochs 100 \--lr 0.0005
+```bash
+python train.py --dataset DRIVE --epochs 100 --lr 0.0005
+```
 
-*Optimization Configuration: The model is trained using the Adam optimizer with an initial learning rate of* ![][image2]*, utilizing a cosine annealing scheduler to smoothly adjust the learning rate, alongside a weight decay of* ![][image3] *for regularization. Early stopping with a patience of 50 epochs is strictly applied based on validation performance to halt training once improvements plateau.*
+The reported configuration uses Adam with an initial learning rate of \(5\times10^{-4}\), cosine annealing, and early stopping with a patience of 50 epochs.
 
-### **3\. Testing**
+The available optimizer configuration used for the reported experiments **does not set weight decay**.
 
-To quickly evaluate the model using pre-trained weights and output comprehensive evaluation metrics (including clDice, AUC, F1, Accuracy, Sensitivity, and Specificity):
+### 3. Testing
 
-python test.py \--dataset DRIVE \--weights checkpoints/best\_model.pth
+To evaluate a trained model:
 
-## **📜 Citation**
+```bash
+python test.py --dataset DRIVE --weights checkpoints/best_model.pth
+```
 
-If you find this code, framework, or research methodology helpful in your own academic or clinical work, please consider citing our paper:
+The evaluation reports:
 
-@article{li2026uniresama,  
-  title={Unified Coordination Framework for Topology-Preserving Retinal Vessel Segmentation},  
-  author={Li, Peifeng and Meng, Xianjing and Li, Hengwu and Dou, Changhao},  
-  journal={Pattern Analysis and Applications},  
-  year={2026}  
-}  
+- AUC
+- F1-score
+- clDice
+- Accuracy
+- Sensitivity
+- Specificity
 
+The same skeletonization procedure is used for predictions and ground-truth masks when computing clDice across the evaluated datasets.
 
+---
 
-[image1]: <data:image/png;base64,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>
+## 📌 Interpretation of Structural Results
 
-[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHIAAAAZCAYAAADt7nrkAAAD3UlEQVR4Xu1ZPWiTQRhOSYWKglStsUmayw8IBcUhYBcHERFLUUFbEOwmqIsgdiiIuJRuTg4OwaWDoOImRcEOUUF0UZBip+LPIli0ix2smvg8zfvZt2e+5GtM0rTcAy/33XPvfffe+9xdrl9DIQcHBwcHB4dkMnkZdtHmHdYZjDELiURi1OYd1g/aIOKVDSMkjpWTsA6vnk6nt2Fiw9qnmcDYl5DcXpv3gLZzsBz8hiKRyBa7PSgw5z6858aGERITKVr2BmLusf0aBYqBRN6VsX+xRP247ZdKpQ6gbZ4LjXWWqE+Rt30DoI0LgQ8bSchF2BfYN0zoMaiw7dNgtGN3HOrp6cmIWGWFZGxoK2gO/Y6BexiPxzezns1mN6HeXc4ymcyukMyN49CXzxtGSCRjwuaCgEcTEnDd5j0guduRpJs2Xwl4X9ZPSPKwWYujSEXEckHzlYC49sH/Lcb4RJP3fsfzkRWOPCqwuo56igNhrjauOv1b1Cr4DyF3Y/JP1TxXAO3PkKCczVdCACHzmoNfp/C3Nb8aGJ8dyZvQGMqwDPAIdpi8HAOFWCy2w+oTCF1dXVtNmSPDz2ScNvs9NuA7C3uPyQzCzuN5ATZg+/kBvtNGCUaBKaKfwJXgJ6TMvWgsIf34IOBRi34vpD/HXN6R2LYx7L693JXiMO+1SZBMUvffDqsA+o14x0EQg/+TIIuGMeoLA+pzOu5qQF+4m2lPuFp2oodmClkReGE/X44ExjlAUn0xoOLgCqZGIRsFxNin64jvAWP3LhBBIGLmcJNMsKxlNxItI6QHBDKKl0/pv3NQn+SgfJar85gE8g52ern32kJi/yeZ1WBKR2xhNQvAhp+Q6oTLa14JOan5ugArvENEG9c86h84KJ+ZLFin8GdhM9q3WcC4p2CvuaM8rhYhG70jCRHsueai0ehO4Wu+7PjCO0JRpjUvA07BemFflf/Sb6f2LYdGXHaw6CbgOwch9nsc6ndMKdaU9vWDacJlhwD/A/ZZc4zblG6dWc3XBd6KZuIV3S7JGbeFs+vNBBJ+hhc0zSGWGcYaqrIICLkL/LMDKWY5vhoqCZko80EAF8sTRn0QqCsw4Cu8/LfFHeRq4i5F2S+J8trWTEjClK7gi0j+PZTzKO/zj3nbzwYvSYk6fRCQk6FYxvLaD/UB2EfYVSnndHtdgVUS5UrVnOzSpcuPLZxdXwOEKQpiyMFG7MZWA/I1hDhvWR9dGg+c4xEMPJuQPzjlty6flK885FFfXNnLoeUgx+pPHquKGzZymUA5Bnu53MOhJQGRrhnrR5rgv4og6GBTjwcHBweHdYc/XrxgE3vDSSUAAAAASUVORK5CYII=>
+UniRes-AMA U-Net is designed to improve vascular structural continuity through coordinated feature representation and local supervision.
 
-[image3]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEcAAAAXCAYAAABZPlLoAAACNElEQVR4Xu2Xv0oDQRDGL6iFKAhCPEMud8mlSmEVNJ1YiGBhpW9gIxILY+FbiNgIURALwYewENu0QsDKWFooFloZ4zdkV5bJ/Uk2iYruD4Yk38zt7X2Zm1wsy2AwGIaD67pnjuPMcd1gWQnP815hUJEn/jW+70/BmJNuzUnkcrlFLn432OgONlzgugS5PUQ1k8msFIvFMZ7vFqxRQayHmoPEAeIJ0US0ULTPa4aNbdsTOO8lnR/xLvaxxuvEhTSlIfgiPdTd0SuvjYO6Jgvofag5yJeQ2ECxi6LGT5gDRrGPJXRCHhe6EGFOHfHMtDJqD/E2QZ/JOGipoMjn8zMoGaFanG9XWSPYHIlYoCdzyNiotsYvwHQ6nXa4HgVtMsQcGpwtxJUqivoPvC6rehTY9xbqH2SIdR+FeZ1omjOL+uMggyiHuAnKRRFmTjKZnCQda56rOup8cXEVVe8FbxidQ+CYGqLKdTImSI8jzByxvw5zpI44UvVewLFvuKXnuf6FrjkEDUQygrpEt2MkuuZwfaD0Yw6BY2/JIN2OkfxJc0T3kEGnGMTjPN8tYeZgfTvIBGmO18dtFUu/5ghjhtY5ciAjLlQdnwtC1x7IseiaIztGnTE0d8ggnbkTZg4hTKgxbRVxj25Nq/pA0TWHNktGcF23g2LM6XgIpP26ykPgQKHFxTfCo4FI8XqV7AAfAmmWBOyB4lopowfBste+hbcRL4i6kjfAkE2vPd9KVvvvgMFg+P18AqvV29umoAGMAAAAAElFTkSuQmCC>
+In particular:
+
+- BVA models local directional vessel responses.
+- AMA recalibrates decoder features before multiscale fusion.
+- Seq-MLP refines bottleneck channel responses.
+- AMBF combines parallel prediction heads.
+- Calibre-based weighting emphasizes small vessels.
+- Finite-difference supervision penalizes mismatched local transitions.
+
+The reported **clDice** results provide centerline-based evidence of structural continuity.
+
+However, the method **does not impose an explicit topology-preserving operator, persistent-homology constraint, or global topological invariant**. The reported results should therefore be interpreted as empirical segmentation and structural-continuity performance under the evaluated settings.
+
+---
+
+## ⚠️ Current Scope and Limitations
+
+The current evaluation is limited to the three retinal fundus benchmarks used in the manuscript.
+
+The reported evidence does not establish performance on other vascular imaging modalities or larger external clinical datasets.
+
+In addition:
+
+- the original three-dataset main results are single-run point estimates;
+- the exact internal validation subsets of the original main experiments cannot be fully reconstructed from the preserved records;
+- repeated-run variability analysis is currently provided for the DRIVE ablation experiments;
+- UniRes-AMA U-Net does not provide a mathematical guarantee of topology preservation;
+- the measured inference speed is 5.7 FPS on the reported hardware and is therefore more appropriate for offline or batch analysis than real-time diagnostic use.
+
+---
+
+## 📜 Citation
+
+If you find this repository useful, please consider citing the manuscript:
+
+```bibtex
+@unpublished{li2026uniresama,
+  title  = {A Unified Coordination Framework for Retinal Vessel Segmentation},
+  author = {Li, Peifeng and Meng, Xianjing and Li, Hengwu and Dou, Changhao},
+  note   = {Manuscript under review at Pattern Analysis and Applications},
+  year   = {2026}
+}
+```
+
+The citation information will be updated after publication.
+
+---
+
+## 📬 Contact
+
+For questions regarding the implementation or experiments, please open an issue in this repository.
+
+---
+
+## Acknowledgement
+
+We thank the developers and maintainers of the DRIVE, STARE, and CHASEDB1 datasets and the open-source research community that supports retinal vessel segmentation research.
