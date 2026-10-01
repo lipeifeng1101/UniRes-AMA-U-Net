@@ -8,25 +8,34 @@
 
 **Status:** Under review at *Pattern Analysis and Applications* (2026)
 
-UniRes-AMA U-Net is a retinal vessel segmentation framework designed to coordinate vessel representations across different stages of an encoder-decoder network. The method focuses on improving the delineation of small vessels and vascular structural continuity through complementary feature refinement, prediction fusion, and training objectives.
+UniRes-AMA U-Net is a retinal vessel segmentation framework designed to coordinate vessel representations across different stages of an encoder-decoder network. The method focuses on improving small-vessel delineation and vascular structural continuity through complementary feature refinement, prediction fusion, and training objectives.
 
-> **Important:** The proposed framework does not impose an explicit topological constraint or guarantee formal topology preservation. Structural continuity is evaluated empirically using standard segmentation metrics together with centerline-based clDice.
+> **Note:** The proposed framework does not impose an explicit topological constraint or guarantee formal topology preservation. Structural continuity is evaluated empirically using standard segmentation metrics together with centerline-based clDice.
 
 ---
 
 ## 🚀 Overview
 
-Retinal vessel segmentation is an important step in quantitative fundus image analysis. Accurate segmentation remains challenging because small and low-contrast vessels can weaken during downsampling, while features from different encoder and decoder stages may contain different spatial and semantic information.
+Retinal vessel segmentation is an important step in quantitative fundus image analysis. Accurate segmentation remains challenging because small and low-contrast vessels can weaken during repeated downsampling, while features from different encoder and decoder stages may contain different spatial and semantic information.
 
-**UniRes-AMA U-Net** follows a symmetric encoder-decoder architecture and coordinates vessel representations at several stages of the network.
+**UniRes-AMA U-Net** follows a symmetric encoder-decoder architecture and coordinates vascular representations at several stages of the network.
 
-The framework contains the following main components:
+The framework mainly contains the following components:
 
 ### 1. Window Attention BotBlock
 
 A lightweight window-based attention block is applied once to the shallow high-resolution representation.
 
-Instead of performing global self-attention over the complete image, the feature map is divided into local non-overlapping windows. This provides controlled spatial interaction between neighboring vessel features while retaining the high spatial resolution available at the beginning of the network.
+Instead of applying global self-attention to the complete image, the feature map is divided into local non-overlapping windows. This provides controlled spatial interaction among neighboring vessel features while retaining the high spatial resolution available at the beginning of the network.
+
+In the reported configuration:
+
+```text
+Window size: 8 × 8
+Number of attention heads: 4
+```
+
+---
 
 ### 2. Unified Residual Block (Uni-ResBlock)
 
@@ -35,7 +44,22 @@ Uni-ResBlock is the main feature extraction unit and integrates two complementar
 - **Simplified Spatial Attention (SSA)** emphasizes spatially relevant vessel regions using channel-wise average and maximum pooling.
 - **Balanced Vessel Attention (BVA)** uses horizontal, vertical, diagonal, and pointwise convolutions to refine directional responses of elongated vascular structures.
 
-SSA and BVA operate on different intermediate features within the same sequential residual pathway and provide complementary spatial and directional refinement.
+SSA and BVA operate on different intermediate features within the same sequential residual pathway.
+
+Their roles are complementary:
+
+```text
+SSA → spatial localization
+BVA → directional vessel refinement
+```
+
+The BVA enhancement coefficient γ is initialized to:
+
+```text
+γ = 0.2
+```
+
+---
 
 ### 3. Adaptive Multi-Directional Attention (AMA)
 
@@ -43,11 +67,25 @@ AMA is applied to intermediate decoder features before multiscale feature fusion
 
 It recalibrates feature responses across three complementary planes:
 
-- \(C-W\)
-- \(C-H\)
-- \(H-W\)
+```text
+C-W
+C-H
+H-W
+```
 
-AMA uses lightweight gating operations rather than query-key self-attention. Its role is to coordinate spatial and channel information during decoding.
+where:
+
+```text
+C = channel dimension
+H = feature height
+W = feature width
+```
+
+AMA uses lightweight gating operations rather than query-key self-attention.
+
+Its role is to coordinate spatial and channel information during decoding before multiscale feature fusion.
+
+---
 
 ### 4. Seq-MLP
 
@@ -55,60 +93,142 @@ Seq-MLP is placed at the bottleneck of the encoder-decoder network.
 
 The bottleneck feature is reshaped into a sequence representation, after which the same affine transformation is applied independently to the channel vector at each spatial position.
 
-Therefore, **Seq-MLP performs pointwise channel refinement rather than long-range spatial token interaction**. It changes the channel composition while leaving the spatial index unchanged.
+The operation can be summarized as:
+
+```text
+Bottleneck feature
+      ↓
+Sequence reshape
+      ↓
+Pointwise channel projection
+      ↓
+ReLU
+      ↓
+Spatial reshape
+      ↓
+Residual addition + BatchNorm
+```
+
+Therefore, **Seq-MLP performs pointwise channel refinement rather than long-range spatial token interaction**.
+
+It changes the channel composition while leaving the spatial index unchanged.
+
+Its spatial mixing scope is comparable to a 1 × 1 convolution.
+
+---
 
 ### 5. Adaptive Multi-Branch Fusion (AMBF)
 
 AMBF combines three parallel prediction heads:
 
-- **Main branch**
-- **Small Vessel branch**
-- **Continuity branch**
+```text
+P₁ → Main branch
+P₂ → Small Vessel branch
+P₃ → Continuity branch
+```
 
-The three predictions are combined using globally shared learnable coefficients. The raw fusion parameters are optimized jointly with the network and normalized using Softmax during the forward pass.
+The three predictions are combined using globally shared learnable coefficients.
 
-The coefficients are shared across input samples and are **not dynamically generated for each image**.
+The raw fusion parameters are initialized as:
 
-The names of the auxiliary branches describe their intended refinement roles. They should not be interpreted as independently supervised functional decompositions.
+```text
+[1.0, 0.3, 0.2]
+```
+
+corresponding to:
+
+```text
+Main branch
+Small Vessel branch
+Continuity branch
+```
+
+A Softmax operation converts these parameters into normalized fusion coefficients during the forward pass.
+
+Conceptually:
+
+```text
+Final Prediction
+      =
+α₁ × P₁
+      +
+α₂ × P₂
+      +
+α₃ × P₃
+```
+
+where:
+
+```text
+α₁ + α₂ + α₃ = 1
+```
+
+The coefficients are global model parameters shared across all input images. They are **not dynamically generated for each individual image**.
+
+The branch names describe their intended refinement roles. They should not be interpreted as independently supervised functional decompositions.
 
 ---
 
 ## 🎯 Training Objective
 
-The final fused prediction is optimized using
-
-\[
-\mathcal{L}_{\mathrm{total}}
-=
-\mathcal{L}_{\mathrm{main}}
-+
-\lambda_1\mathcal{L}_{\mathrm{small}}
-+
-\lambda_2\mathcal{L}_{\mathrm{cont}}.
-\]
-
-The objective contains:
-
-- **Main segmentation loss:** binary cross-entropy + soft Dice loss.
-- **Small-vessel weighting term:** gives greater emphasis to vessels with small calibre.
-- **Finite-difference continuity term:** penalizes mismatched local transitions between the predicted vessel map and the reference mask.
-
-The main experiments use
+The final fused prediction is optimized using three complementary loss components:
 
 ```text
-λ1 = 0.5
-λ2 = 0.5
+L_total = L_main + λ₁ × L_small + λ₂ × L_cont
 ```
 
-The maximum microvessel diameter is set to **4 pixels** on the \(512 \times 512\) training grid.
+where:
 
-These objectives encourage fine-vessel reconstruction and local structural consistency but do not impose a global topological invariant.
+```text
+L_main   → main segmentation loss
+L_small  → small-vessel weighting loss
+L_cont   → finite-difference continuity loss
+```
+
+### Main Segmentation Loss
+
+The main segmentation objective combines:
+
+```text
+Binary Cross-Entropy Loss
++
+Soft Dice Loss
+```
+
+### Small-Vessel Weighting
+
+The small-vessel term gives greater emphasis to vessels with small calibre.
+
+The maximum microvessel diameter is set to:
+
+```text
+4 pixels
+```
+
+on the 512 × 512 training grid.
+
+### Local Continuity Supervision
+
+The continuity term uses finite differences to penalize mismatched local transitions between the predicted vessel map and the reference mask.
+
+The main experiments use:
+
+```text
+λ₁ = 0.5
+λ₂ = 0.5
+```
+
+These objectives encourage fine-vessel reconstruction and local structural consistency, but they do **not** impose a global topological invariant.
 
 ---
 
 ## 📊 Quantitative Results
 
-UniRes-AMA U-Net was evaluated on three public retinal vessel segmentation datasets: **DRIVE**, **STARE**, and **CHASEDB1**.
+UniRes-AMA U-Net was evaluated on three public retinal vessel segmentation datasets:
+
+- DRIVE
+- STARE
+- CHASEDB1
 
 | Dataset | AUC | F1-score | clDice | ACC | SE | SP |
 |---|---:|---:|---:|---:|---:|---:|
@@ -116,15 +236,39 @@ UniRes-AMA U-Net was evaluated on three public retinal vessel segmentation datas
 | **STARE** | **0.9872** | **0.8494** | **0.8530** | **0.9773** | **0.8516** | **0.9892** |
 | **CHASEDB1** | **0.9891** | **0.8342** | **0.8395** | **0.9761** | **0.8662** | **0.9872** |
 
-The clDice values provide complementary evidence based on agreement between the predicted and reference vessel centerlines.
+The reported clDice values provide complementary evidence based on the agreement between predicted and reference vessel centerlines.
 
 The three-dataset results above are **single-run aggregate point estimates** and are not reported as mean ± standard deviation over repeated training runs.
 
 ---
 
+## 📈 Evaluation Metrics
+
+The following metrics are reported:
+
+```text
+AUC      → Area Under the ROC Curve
+F1-score → Harmonic mean of precision and recall
+clDice   → Centerline-based Dice measure
+ACC      → Accuracy
+SE       → Sensitivity
+SP       → Specificity
+```
+
+clDice is used as a complementary indicator of vascular structural continuity.
+
+It should not be interpreted as evidence that the proposed network mathematically guarantees topology preservation.
+
+---
+
 ## ⏱️ Computational Efficiency
 
-All runtime measurements reported in the manuscript were obtained using an input resolution of \(512 \times 512\) on a single **NVIDIA GeForce RTX 2080 Ti** GPU.
+All runtime measurements reported in the manuscript were obtained using:
+
+```text
+Input resolution: 512 × 512
+GPU: NVIDIA GeForce RTX 2080 Ti
+```
 
 | Model | Parameters | Training Time / Epoch | Inference Time / Image | FPS |
 |---|---:|---:|---:|---:|
@@ -134,7 +278,17 @@ All runtime measurements reported in the manuscript were obtained using an input
 
 Runtime depends on hardware and implementation details.
 
-The additional feature refinement and structural modeling increase the computational cost relative to vanilla U-Net. Under the reported implementation, UniRes-AMA U-Net is intended primarily for **offline or batch retinal image analysis rather than real-time diagnostic use**.
+Compared with vanilla U-Net, UniRes-AMA U-Net introduces additional computational overhead due to the added feature refinement and prediction fusion mechanisms.
+
+Under the reported implementation:
+
+```text
+Inference time: 0.174 s / image
+FPS: 5.7
+Parameters: 46.3 M
+```
+
+The current implementation is therefore intended primarily for **offline or batch retinal image analysis rather than real-time diagnostic use**.
 
 ---
 
@@ -152,7 +306,7 @@ scikit-learn
 OpenCV
 ```
 
-The experiments reported in the manuscript were performed on:
+Hardware used for the reported experiments:
 
 ```text
 NVIDIA GeForce RTX 2080 Ti
@@ -170,21 +324,59 @@ The framework was evaluated on DRIVE, STARE, and CHASEDB1.
 | STARE | 15 | 5 | 20 | 700 × 605 | 512 × 512 | `.ppm` |
 | CHASEDB1 | 23 | 5 | 28 | 990 × 960 | 512 × 512 | `.jpg` |
 
-### Dataset Links
+### DRIVE
 
-**DRIVE**
+**Digital Retinal Images for Vessel Extraction**
+
+```text
+Total images: 40
+Training pool: 20
+Test images: 20
+Original resolution: 584 × 565
+Network input: 512 × 512
+```
+
+Download:
 
 https://drive.grand-challenge.org/
 
-**STARE**
+### STARE
+
+**STructured Analysis of the REtina**
+
+```text
+Total images: 20
+Training pool: 15
+Test images: 5
+Original resolution: 700 × 605
+Network input: 512 × 512
+```
+
+Download:
 
 https://cecas.clemson.edu/~ahoover/stare/
 
-**CHASEDB1**
+### CHASEDB1
+
+**Child Heart And Health Study in England**
+
+```text
+Total images: 28
+Training pool: 23
+Test images: 5
+Original resolution: 990 × 960
+Network input: 512 × 512
+```
+
+Download:
 
 https://blogs.kingston.ac.uk/retinal/chasedb1/
 
-### Suggested Directory Structure
+---
+
+## 📁 Directory Structure
+
+Download the datasets and organize them under the `data/` directory.
 
 ```text
 data/
@@ -195,16 +387,27 @@ data/
 └── CHASEDB1/
 ```
 
+Adjust the dataset paths if your local directory structure is different.
+
 ---
 
 ## 🔧 Preprocessing
 
-All images are processed using the same general preprocessing pipeline:
+All images undergo the same general preprocessing pipeline:
 
-1. Illumination correction.
-2. Contrast enhancement.
-3. Resizing to \(512 \times 512\).
-4. Intensity normalization.
+```text
+Fundus image
+    ↓
+Illumination correction
+    ↓
+Contrast enhancement
+    ↓
+Resize to 512 × 512
+    ↓
+Normalization
+    ↓
+Network input
+```
 
 During training, data augmentation includes:
 
@@ -213,15 +416,21 @@ During training, data augmentation includes:
 - random rotation,
 - random scaling.
 
-The network is trained using \(512 \times 512\) inputs.
+The network input remains:
 
-**No \(64 \times 64\) training crops are used in the reported experiments.**
+```text
+512 × 512
+```
+
+during training.
+
+**No 64 × 64 training crops are used in the reported experiments.**
 
 ---
 
 ## ⚙️ Training Configuration
 
-The main training configuration reported in the manuscript is:
+The main training configuration reported in the manuscript is summarized below.
 
 | Setting | Value |
 |---|---|
@@ -229,18 +438,21 @@ The main training configuration reported in the manuscript is:
 | GPU | NVIDIA GeForce RTX 2080 Ti |
 | Optimizer | Adam |
 | Maximum epochs | 100 |
-| Initial learning rate | \(5 \times 10^{-4}\) |
+| Initial learning rate | 5 × 10⁻⁴ |
 | Scheduler | Cosine annealing |
-| Weight decay | Not set in the available optimizer configuration |
+| Weight decay | Not set |
 | Early stopping | Patience = 50 epochs |
 | Main experiment seed | 2021 |
-| Uni-ResBlock \(\gamma\) initialization | 0.2 |
-| AMBF raw weights | \([1.0, 0.3, 0.2]\) |
-| \(\lambda_1\) | 0.5 |
-| \(\lambda_2\) | 0.5 |
+| Window size | 8 × 8 |
+| Attention heads | 4 |
+| Uni-ResBlock γ initialization | 0.2 |
+| AMBF raw weights | [1.0, 0.3, 0.2] |
+| λ₁ | 0.5 |
+| λ₂ | 0.5 |
 | Maximum microvessel diameter | 4 pixels |
+| Input resolution | 512 × 512 |
 
-The AMBF raw coefficients correspond to the Main, Small Vessel, and Continuity branches and are normalized using Softmax during inference and training.
+The available optimizer configuration used for the reported experiments does **not** set weight decay.
 
 ---
 
@@ -250,36 +462,89 @@ The AMBF raw coefficients correspond to the Main, Small Vessel, and Continuity b
 
 The test sets were kept separate from model selection and early stopping.
 
-For the originally reported main experiments, the preserved experimental records indicate that an internal validation subset was sampled from each training pool without overlap with the test set.
+For the originally reported main experiments, the preserved experimental records indicate that a validation subset was sampled from each training pool without overlap with the corresponding test set.
 
-The exact internal validation ratios and image identifiers of these original runs are not available in the preserved configuration.
+However, the exact internal validation ratios and image identifiers of these original runs cannot be reconstructed from the preserved experimental configuration.
+
+No k-fold cross-validation results are reported for the main three-dataset experiments.
+
+---
 
 ### DRIVE Revision Experiments
 
-The additional DRIVE ablation and loss-weight sensitivity experiments follow a separately documented source-image-level protocol.
+The additional DRIVE ablation and loss-weight sensitivity experiments use a separately documented source-image-level protocol.
+
+The original DRIVE training pool contains:
+
+```text
+20 source images
+```
+
+For each revision experiment:
+
+```text
+Training source images:   18
+Validation source images:  2
+Test source images:       20
+```
+
+The source-image split is performed **before** generating training sampling entries.
+
+The 18 training source images generate:
+
+```text
+540 fixed training sampling entries
+```
+
+The two validation source images generate:
+
+```text
+60 fixed validation sampling entries
+```
+
+These entries are reused across epochs.
+
+Importantly:
+
+> The 540 training indices and 60 validation indices are sampling entries and do **not** represent 64 × 64 image crops.
+
+No source image is shared between the training and validation sampling lists.
+
+---
+
+### Five-Run Ablation Study
+
+The DRIVE ablation study uses five independent training runs:
+
+```text
+Seed 2021
+Seed 2022
+Seed 2023
+Seed 2024
+Seed 2025
+```
 
 For each run:
 
-```text
-Original DRIVE training pool: 20 images
-Training source images:       18
-Validation source images:      2
-Held-out DRIVE test images:   20
-```
+- all compared configurations use the same source-image split;
+- the split is regenerated between independent runs;
+- all other training and evaluation settings are kept fixed;
+- evaluation is performed on the same held-out 20-image DRIVE test set.
 
-The 18 training images generate **540 fixed training sampling entries**, while the two validation images generate **60 fixed validation sampling entries**.
+---
 
-These sampling entries **do not represent 64 × 64 image crops**.
+### Loss-Weight Sensitivity Analysis
 
-For the five-run ablation study:
+The loss-weight sensitivity experiment uses:
 
 ```text
-Seeds: 2021, 2022, 2023, 2024, 2025
+Seed: 2021
+Training / validation source split: 18 / 2
 ```
 
-Within each run, all compared configurations use the same source-image split. The source-image split is regenerated between independent runs.
+The sensitivity analysis was conducted after the main configuration had already been fixed.
 
-The loss-weight sensitivity analysis uses seed **2021** and a fixed 18/2 source-image split.
+The test-set results were not used to select the loss weights for the main experiments.
 
 ---
 
@@ -292,21 +557,48 @@ git clone https://github.com/lipeifeng1101/UniRes-AMA-U-Net.git
 cd UniRes-AMA-U-Net
 ```
 
-### 2. Training
+---
 
-For example, to train the model on DRIVE:
+### 2. Prepare the Dataset
+
+Download the desired retinal vessel dataset and place it under the `data/` directory.
+
+For example:
+
+```text
+data/
+└── DRIVE/
+    ├── training/
+    └── test/
+```
+
+---
+
+### 3. Training
+
+For example, to train UniRes-AMA U-Net on DRIVE:
 
 ```bash
 python train.py --dataset DRIVE --epochs 100 --lr 0.0005
 ```
 
-The reported configuration uses Adam with an initial learning rate of \(5\times10^{-4}\), cosine annealing, and early stopping with a patience of 50 epochs.
+The reported configuration uses:
 
-The available optimizer configuration used for the reported experiments **does not set weight decay**.
+```text
+Optimizer: Adam
+Initial learning rate: 5 × 10⁻⁴
+Scheduler: Cosine annealing
+Maximum epochs: 100
+Early stopping patience: 50
+```
 
-### 3. Testing
+The optimizer configuration used in the reported experiments does not set weight decay.
 
-To evaluate a trained model:
+---
+
+### 4. Testing
+
+Evaluate a trained model using:
 
 ```bash
 python test.py --dataset DRIVE --weights checkpoints/best_model.pth
@@ -314,14 +606,35 @@ python test.py --dataset DRIVE --weights checkpoints/best_model.pth
 
 The evaluation reports:
 
-- AUC
-- F1-score
-- clDice
-- Accuracy
-- Sensitivity
-- Specificity
+```text
+AUC
+F1-score
+clDice
+Accuracy
+Sensitivity
+Specificity
+```
 
-The same skeletonization procedure is used for predictions and ground-truth masks when computing clDice across the evaluated datasets.
+The same skeletonization procedure is applied consistently to predictions and ground-truth masks when computing clDice across the evaluated datasets.
+
+---
+
+## 🧩 Role of Each Component
+
+A concise overview of the framework is given below.
+
+| Component | Network Stage | Main Role |
+|---|---|---|
+| Window Attention BotBlock | Shallow feature stage | Local spatial interaction |
+| SSA | Uni-ResBlock | Spatial vessel localization |
+| BVA | Uni-ResBlock | Directional vessel refinement |
+| AMA | Decoder | Spatial-channel feature coordination |
+| Seq-MLP | Bottleneck | Pointwise channel refinement |
+| AMBF | Prediction stage | Learnable fusion of three prediction heads |
+| Calibre weighting | Training objective | Emphasis on small vessels |
+| Finite-difference loss | Training objective | Local structural continuity |
+
+These mechanisms operate at different stages of the network and jointly support the representation of fine vessels and vascular structural continuity.
 
 ---
 
@@ -329,40 +642,74 @@ The same skeletonization procedure is used for predictions and ground-truth mask
 
 UniRes-AMA U-Net is designed to improve vascular structural continuity through coordinated feature representation and local supervision.
 
-In particular:
+Specifically:
 
-- BVA models local directional vessel responses.
-- AMA recalibrates decoder features before multiscale fusion.
-- Seq-MLP refines bottleneck channel responses.
-- AMBF combines parallel prediction heads.
-- Calibre-based weighting emphasizes small vessels.
-- Finite-difference supervision penalizes mismatched local transitions.
+```text
+BVA
+→ models local directional vessel responses
 
-The reported **clDice** results provide centerline-based evidence of structural continuity.
+AMA
+→ recalibrates decoder features before multiscale fusion
 
-However, the method **does not impose an explicit topology-preserving operator, persistent-homology constraint, or global topological invariant**. The reported results should therefore be interpreted as empirical segmentation and structural-continuity performance under the evaluated settings.
+Seq-MLP
+→ refines bottleneck channel responses
+
+AMBF
+→ combines parallel prediction heads
+
+Calibre-based weighting
+→ emphasizes small vessels
+
+Finite-difference supervision
+→ penalizes mismatched local transitions
+```
+
+The reported clDice results provide centerline-based evidence of vascular structural continuity.
+
+However, UniRes-AMA U-Net does **not** impose:
+
+- a persistent-homology constraint,
+- an explicit skeleton supervision branch,
+- a global topology-preserving operator,
+- or a mathematical topological invariant.
+
+Accordingly, the method should be interpreted as a segmentation framework that encourages structural continuity rather than one that formally guarantees topology preservation.
 
 ---
 
 ## ⚠️ Current Scope and Limitations
 
-The current evaluation is limited to the three retinal fundus benchmarks used in the manuscript.
+The current evaluation is limited to three public retinal fundus benchmarks:
 
-The reported evidence does not establish performance on other vascular imaging modalities or larger external clinical datasets.
+```text
+DRIVE
+STARE
+CHASEDB1
+```
 
-In addition:
+Several limitations should be considered when interpreting the reported results:
 
-- the original three-dataset main results are single-run point estimates;
-- the exact internal validation subsets of the original main experiments cannot be fully reconstructed from the preserved records;
-- repeated-run variability analysis is currently provided for the DRIVE ablation experiments;
-- UniRes-AMA U-Net does not provide a mathematical guarantee of topology preservation;
-- the measured inference speed is 5.7 FPS on the reported hardware and is therefore more appropriate for offline or batch analysis than real-time diagnostic use.
+1. The main three-dataset results are single-run point estimates rather than repeated-run mean ± standard deviation results.
+
+2. For the originally reported main experiments, the exact internal validation ratios and image identifiers cannot be fully reconstructed from the preserved experimental records.
+
+3. Repeated-run variability analysis is currently provided for the DRIVE ablation study.
+
+4. The framework encourages structural consistency but does not mathematically guarantee topology preservation.
+
+5. The current evaluation does not establish generalization to other vascular imaging modalities or larger external clinical datasets.
+
+6. The measured inference time is 0.174 s per image, corresponding to 5.7 FPS on an NVIDIA GeForce RTX 2080 Ti.
+
+Therefore, the current implementation is primarily intended for **offline or batch retinal image analysis rather than real-time diagnostic use**.
 
 ---
 
 ## 📜 Citation
 
-If you find this repository useful, please consider citing the manuscript:
+The manuscript is currently under review.
+
+If you find this repository useful, please consider citing:
 
 ```bibtex
 @unpublished{li2026uniresama,
@@ -379,10 +726,10 @@ The citation information will be updated after publication.
 
 ## 📬 Contact
 
-For questions regarding the implementation or experiments, please open an issue in this repository.
+For questions regarding the implementation or experimental setup, please open an issue in this repository.
 
 ---
 
-## Acknowledgement
+## Acknowledgements
 
-We thank the developers and maintainers of the DRIVE, STARE, and CHASEDB1 datasets and the open-source research community that supports retinal vessel segmentation research.
+We thank the developers and maintainers of the DRIVE, STARE, and CHASEDB1 datasets and the open-source research community supporting retinal vessel segmentation research.
