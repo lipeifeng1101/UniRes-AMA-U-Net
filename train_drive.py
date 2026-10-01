@@ -5,7 +5,7 @@ from os.path import join
 import torch
 from lib.losses.loss import *
 from lib.common import *
-from config import parse_args
+from config_drive import parse_args
 from lib.logger import Logger, Print_Logger
 import models
 from test_drive import TestFinal
@@ -15,8 +15,8 @@ from models.newmodel import GNN_UNet
 from function import  train, val, get_dataloaderV2
 
 def main():
-    setpu_seed(2021)
     args = parse_args()# 会生成args.txt与args.pkl
+    setpu_seed(args.seed)
     save_path = args.outf
     save_args(args,save_path)
     # 获得存储路径，打印args
@@ -51,13 +51,8 @@ def main():
         models.optimizer.load_state_dict(checkpoint['optimizer'])
         args.start_epoch = checkpoint['epoch']+1
 
-    # criterion = LossMulti(jaccard_weight=0,class_weights=np.array([0.5,0.5]))
-    criterion = torch.nn.CrossEntropyLoss() # Initialize loss function 初始化损失函数
     optimizer = optim.Adam(net.parameters(), lr=args.lr)  # 动态调整学习率
     #optimizer = optim.NAdam(net.parameters(), lr=0.002, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, momentum_decay=0.004, foreach=None)
-    seg_criterion = torch.nn.CrossEntropyLoss()
-    endpoint_criterion = torch.nn.BCEWithLogitsLoss()
-    path_criterion = torch.nn.BCEWithLogitsLoss()
     # create a list of learning rate with epochs 创建一个带有epoch的学习率列表
     # lr_schedule = make_lr_schedule(np.array([50, args.N_epochs]),np.array([0.001, 0.0001]))
     # lr_scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=10,gamma=0.5)
@@ -77,10 +72,10 @@ def main():
             (epoch, args.N_epochs,optimizer.state_dict()['param_groups'][0]['lr'], time.asctime()))
         
         # train stage
-        train_log = train(train_loader, net, seg_criterion, endpoint_criterion, path_criterion, optimizer, device)
+        train_log = train(train_loader, net, optimizer, device, args)
         # val stage
         if not args.val_on_test:
-            val_log = val(val_loader, net, seg_criterion, endpoint_criterion, path_criterion, device)
+            val_log = val(val_loader, net, device, args)
         else:
             val_tool.inference(net)
             val_log = val_tool.val()
